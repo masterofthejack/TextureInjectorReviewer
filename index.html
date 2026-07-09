@@ -1,0 +1,344 @@
+<!-- <!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Babylon Drag & Drop Emissive + Google Drive</title>
+
+  <!-- Babylon -->
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+  <script src="https://cdn.babylonjs.com/materialsLibrary/babylon.shadowOnlyMaterial.min.js"></script>
+
+  <!-- Google Identity Services -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <!-- Shared rendering logic -->
+  <script src="js/viewerCore.js"></script>
+
+  <style>
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #111;
+    }
+
+    canvas {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+    }
+
+    #dropzone {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 10;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 10px 14px;
+      border-radius: 6px;
+      color: #fff;
+      font-family: system-ui, sans-serif;
+      font-size: 13px;
+      border: 1px dashed rgba(255, 255, 255, 0.4);
+      cursor: pointer;
+      user-select: none;
+      opacity: 0;
+      transition: opacity .25s ease, background .25s ease, border-color .25s ease;
+      max-width: 260px;
+      box-sizing: border-box;
+    }
+
+    #dropzone.dragover {
+      opacity: 1;
+      background: rgba(0, 0, 0, 0.85);
+      border-color: #4caf50;
+    }
+
+    #fileInput {
+      display: none;
+    }
+
+    #drivePanel {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      z-index: 20;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 10px 14px;
+      border-radius: 6px;
+      color: #fff;
+      font-family: system-ui, sans-serif;
+      font-size: 12px;
+      max-width: 420px;
+      width: calc(100vw - 20px);
+      box-sizing: border-box;
+    }
+
+    #drivePanel input {
+      width: 100%;
+      margin: 6px 0;
+      padding: 4px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      background: rgba(0, 0, 0, 0.4);
+      color: #fff;
+      font-size: 12px;
+      font-family: system-ui, sans-serif;
+    }
+
+    #drivePanel button {
+      padding: 4px 10px;
+      margin-right: 6px;
+      margin-top: 4px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    #drivePanel button:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
+    #driveStatus {
+      margin-top: 4px;
+      font-size: 11px;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="dropzone">
+    Drop image anywhere or click to choose<br />
+    <span style="opacity:0.7;">(used as emissive texture)</span>
+  </div>
+
+  <input id="fileInput" type="file" accept="image/*" />
+  <canvas id="renderCanvas"></canvas>
+
+  <!-- Google Drive UI -->
+  <div id="drivePanel">
+    <div><strong>Google Drive image → truck screen</strong></div>
+    <div style="margin-top:4px;">Paste a Google Drive file link or file ID.</div>
+    <input id="driveInput" placeholder="Drive link or file ID" />
+    <div>
+      <button id="driveAuthBtn">Connect Google Drive</button>
+      <button id="driveLoadBtn" disabled>Load to Screen</button>
+      <button id="driveShareBtn" disabled>Copy Share Link</button>
+    </div>
+    <div id="driveStatus">Not connected.</div>
+  </div>
+
+<script>
+  const canvas = document.getElementById("renderCanvas");
+  const engine = new BABYLON.Engine(canvas, true);
+
+  let scene = null;
+  let screenMat = null;
+
+  // ---------- EMISSIVE HANDLER ----------
+  function setScreenEmissiveFromUrl(url) {
+    if (!screenMat || !scene) return;
+
+    if (screenMat.emissiveTexture) {
+      screenMat.emissiveTexture.dispose();
+      screenMat.emissiveTexture = null;
+    }
+
+    const tex = new BABYLON.Texture(url, scene);
+    tex.invertY = false;
+    tex.hasAlpha = true;
+
+    screenMat.emissiveTexture = tex;
+    screenMat.emissiveColor = new BABYLON.Color3(1, 1, 1);
+  }
+
+  function handleFile(file) {
+    if (!file || !screenMat) return;
+    const url = URL.createObjectURL(file);
+    setScreenEmissiveFromUrl(url);
+  }
+
+  // ---------- DROPZONE ----------
+  const dropzone = document.getElementById("dropzone");
+  const fileInput = document.getElementById("fileInput");
+
+  dropzone.addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    handleFile(file);
+    fileInput.value = "";
+  });
+
+  ["dragenter", "dragover", "dragleave", "drop"].forEach((evt) => {
+    window.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+  });
+
+  window.addEventListener("dragover", () => dropzone.classList.add("dragover"));
+  window.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+  window.addEventListener("drop", (e) => {
+    dropzone.classList.remove("dragover");
+    const file = e.dataTransfer.files[0];
+    handleFile(file);
+  });
+
+  // ---------- GOOGLE DRIVE ----------
+  const CLIENT_ID = "371240549849-dt480l9a06os8h421tmiv7ja60a280i1.apps.googleusercontent.com";
+
+  let accessToken = null;
+  let tokenClient = null;
+
+  const driveAuthBtn = document.getElementById("driveAuthBtn");
+  const driveLoadBtn = document.getElementById("driveLoadBtn");
+  const driveInput = document.getElementById("driveInput");
+  const driveStatus = document.getElementById("driveStatus");
+  const driveShareBtn = document.getElementById("driveShareBtn");
+
+  driveShareBtn.addEventListener("click", () => {
+    const fileId = extractFileId(driveInput.value);
+    if (!fileId) {
+      driveStatus.textContent = "Cannot generate link — invalid Drive ID.";
+      return;
+    }
+    const shareUrl = `${window.location.origin}/viewer.html?drive=${fileId}`;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      driveStatus.textContent = "Share link copied to clipboard.";
+    });
+  });
+
+  function initGoogleTokenClient() {
+    if (tokenClient) return;
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: "https://www.googleapis.com/auth/drive.readonly",
+      callback: (tokenResponse) => {
+        accessToken = tokenResponse.access_token;
+        driveStatus.textContent = "Connected to Google Drive.";
+        driveLoadBtn.disabled = false;
+      },
+    });
+  }
+
+  function requestDriveAccess() {
+    if (!window.google || !google.accounts || !google.accounts.oauth2) {
+      driveStatus.textContent = "Google OAuth not ready yet. Try again in a moment.";
+      return;
+    }
+    initGoogleTokenClient();
+    tokenClient.requestAccessToken();
+  }
+
+  function ensureDriveToken() {
+    return new Promise((resolve, reject) => {
+      if (accessToken) {
+        resolve(accessToken);
+        return;
+      }
+      if (!window.google || !google.accounts || !google.accounts.oauth2) {
+        reject(new Error("Google OAuth not ready"));
+        return;
+      }
+      initGoogleTokenClient();
+      tokenClient.callback = (tokenResponse) => {
+        accessToken = tokenResponse.access_token;
+        driveStatus.textContent = "Connected to Google Drive.";
+        driveLoadBtn.disabled = false;
+        resolve(accessToken);
+      };
+      tokenClient.requestAccessToken();
+    });
+  }
+
+  function extractFileId(input) {
+    if (!input) return null;
+    const trimmed = input.trim();
+
+    if (/^[A-Za-z0-9_-]+$/.test(trimmed)) return trimmed;
+
+    const match = trimmed.match(/\/d\/([^/]+)/);
+    if (match && match[1]) return match[1];
+
+    const idParam = trimmed.match(/[?&]id=([^&]+)/);
+    if (idParam && idParam[1]) return idParam[1];
+
+    return null;
+  }
+
+  async function fetchDriveImageBlob(fileId) {
+    await ensureDriveToken();
+    const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`;
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok) throw new Error("Drive fetch failed: " + response.status + " " + response.statusText);
+    return await response.blob();
+  }
+
+  async function loadDriveImageToScreen(input) {
+    if (!screenMat) {
+      driveStatus.textContent = "Scene not ready yet.";
+      return;
+    }
+    const fileId = extractFileId(input);
+    if (!fileId) {
+      driveStatus.textContent = "Could not parse Drive file ID from input.";
+      return;
+    }
+    driveStatus.textContent = "Loading image from Drive...";
+    try {
+      const blob = await fetchDriveImageBlob(fileId);
+      const localUrl = URL.createObjectURL(blob);
+      setScreenEmissiveFromUrl(localUrl);
+      driveStatus.textContent = "Image loaded from Drive onto screen.";
+      driveShareBtn.disabled = false;
+    } catch (err) {
+      console.error(err);
+      driveStatus.textContent = "Failed to load from Drive: " + err.message;
+    }
+  }
+
+  driveAuthBtn.addEventListener("click", requestDriveAccess);
+  driveLoadBtn.addEventListener("click", () => {
+    loadDriveImageToScreen(driveInput.value);
+  });
+
+  function getDriveIdFromQuery() {
+    const params = new URLSearchParams(window.location.search);
+    const v = params.get("drive");
+    return v ? v : null;
+  }
+
+  let pendingDriveIdFromUrl = getDriveIdFromQuery();
+
+  // ---------- BOOTSTRAP ----------
+  createTruckViewer(engine, canvas).then(({ scene: s, camera, screenMat: sm }) => {
+    scene = s;
+    screenMat = sm;
+
+    engine.runRenderLoop(() => scene.render());
+    dropzone.style.opacity = 1;
+
+    if (pendingDriveIdFromUrl) {
+      driveInput.value = pendingDriveIdFromUrl;
+      driveStatus.textContent = "Drive ID found in URL. Connect and load when ready.";
+    }
+  });
+
+  
+</script>
+</body>
+
+</html> -->

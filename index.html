@@ -221,15 +221,21 @@
 
   function initGoogleTokenClient() {
     if (tokenClient) return;
-    tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID,
-      scope: "https://www.googleapis.com/auth/drive.readonly",
-      callback: (tokenResponse) => {
-        accessToken = tokenResponse.access_token;
-        driveStatus.textContent = "Connected to Google Drive.";
-        driveLoadBtn.disabled = false;
-      },
-    });
+tokenClient = google.accounts.oauth2.initTokenClient({
+  client_id: CLIENT_ID,
+  scope: "https://www.googleapis.com/auth/drive.readonly",
+  callback: (tokenResponse) => {
+    accessToken = tokenResponse.access_token;
+    driveStatus.textContent = "Connected to Google Drive.";
+    driveLoadBtn.disabled = false;
+
+    // ⭐ AUTO-LOAD IMAGE IF URL CONTAINS ?drive=ID ⭐
+    if (pendingDriveIdFromUrl) {
+      loadDriveImageToScreen(pendingDriveIdFromUrl);
+    }
+  },
+});
+
   }
 
   function requestDriveAccess() {

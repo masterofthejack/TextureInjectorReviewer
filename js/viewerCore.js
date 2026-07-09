@@ -178,6 +178,7 @@ window.createTruckViewer = async function (engine, canvas) {
     fpsDiv.style.position = "fixed";
     fpsDiv.style.top = "10px";
     fpsDiv.style.right = "10px";
+    fpsDiv.style.left = "unset";
     fpsDiv.style.padding = "8px 14px";
     fpsDiv.style.background = "rgba(0,0,0,0.6)";
     fpsDiv.style.color = "white";

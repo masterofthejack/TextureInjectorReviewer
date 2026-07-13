@@ -213,8 +213,9 @@
       driveStatus.textContent = "Cannot generate link — invalid Drive ID.";
       return;
     }
-    const shareUrl = `${window.location.origin}${window.location.pathname}?drive=${fileId}`;
-    navigator.clipboard.writeText(shareUrl).then(() => {
+    const shareUrl = new URL("viewer.html", window.location.href);
+    shareUrl.searchParams.set("drive", fileId);
+    navigator.clipboard.writeText(shareUrl.href).then(() => {
       driveStatus.textContent = "Share link copied to clipboard.";
     });
   });

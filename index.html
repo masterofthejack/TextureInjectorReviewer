@@ -228,13 +228,27 @@
     return successful;
   }
 
+  function buildViewerUrl(fileId) {
+    let path = window.location.pathname;
+    if (path.endsWith(".html")) {
+      path = path.replace(/[^/]+$/, "viewer.html");
+    } else if (path.endsWith("/")) {
+      path = path + "viewer.html";
+    } else {
+      path = path + "/viewer.html";
+    }
+    return `${window.location.origin}${path}?drive=${encodeURIComponent(fileId)}`;
+  }
+
   async function copyToClipboard(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       try {
         await navigator.clipboard.writeText(text);
         return true;
       } catch (err) {
-        console.warn("Clipboard API failed", err);
+        if (err && err.name !== "NotAllowedError" && err.name !== "SecurityError") {
+          console.warn("Clipboard API failed", err);
+        }
       }
     }
     return fallbackCopyTextToClipboard(text);
@@ -247,14 +261,12 @@
       return;
     }
 
-    const shareUrl = new URL("viewer.html", window.location.href);
-    shareUrl.searchParams.set("drive", fileId);
-
-    const copied = await copyToClipboard(shareUrl.href);
+    const shareUrl = buildViewerUrl(fileId);
+    const copied = await copyToClipboard(shareUrl);
     if (copied) {
       driveStatus.textContent = "Share link copied to clipboard.";
     } else {
-      driveStatus.textContent = "Copy failed. Use this link: " + shareUrl.href;
+      driveStatus.textContent = "Copy failed. Use this link: " + shareUrl;
     }
   });
 

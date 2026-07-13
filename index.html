@@ -207,17 +207,55 @@
   const driveStatus = document.getElementById("driveStatus");
   const driveShareBtn = document.getElementById("driveShareBtn");
 
-  driveShareBtn.addEventListener("click", () => {
+  function fallbackCopyTextToClipboard(text) {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.top = "-9999px";
+    textArea.style.left = "-9999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+
+    let successful = false;
+    try {
+      successful = document.execCommand("copy");
+    } catch (err) {
+      console.error("Fallback copy failed", err);
+      successful = false;
+    }
+    document.body.removeChild(textArea);
+    return successful;
+  }
+
+  async function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (err) {
+        console.warn("Clipboard API failed", err);
+      }
+    }
+    return fallbackCopyTextToClipboard(text);
+  }
+
+  driveShareBtn.addEventListener("click", async () => {
     const fileId = extractFileId(driveInput.value);
     if (!fileId) {
       driveStatus.textContent = "Cannot generate link — invalid Drive ID.";
       return;
     }
+
     const shareUrl = new URL("viewer.html", window.location.href);
     shareUrl.searchParams.set("drive", fileId);
-    navigator.clipboard.writeText(shareUrl.href).then(() => {
+
+    const copied = await copyToClipboard(shareUrl.href);
+    if (copied) {
       driveStatus.textContent = "Share link copied to clipboard.";
-    });
+    } else {
+      driveStatus.textContent = "Copy failed. Use this link: " + shareUrl.href;
+    }
   });
 
   function initGoogleTokenClient() {

@@ -117,34 +117,27 @@
 </head>
 
 <body>
+
+  <div id="dropzone">
+    Drop image anywhere or click to choose<br />
+    <span style="opacity:0.7;">(used as emissive texture)</span>
+  </div>
+
   <input id="fileInput" type="file" accept="image/*" />
   <canvas id="renderCanvas"></canvas>
 
   <!-- Google Drive UI -->
   <div id="drivePanel">
-  <div><strong>Google Drive image → truck screen</strong></div>
-  <div style="margin-top:4px;">Paste a Google Drive file link or file ID.</div>
-
-  <input id="driveInput" placeholder="Drive link or file ID" />
-
-  <div style="margin-top:8px;">
-    <button id="driveAuthBtn">Connect Google Drive</button>
-    <button id="driveLoadBtn" disabled>Load to Screen</button>
-    <button id="driveShareBtn" disabled>Copy Share Link</button>
+    <div><strong>Google Drive image → truck screen</strong></div>
+    <div style="margin-top:4px;">Paste a Google Drive file link or file ID.</div>
+    <input id="driveInput" placeholder="Drive link or file ID" />
+    <div>
+      <button id="driveAuthBtn">Connect Google Drive</button>
+      <button id="driveLoadBtn" disabled>Load to Screen</button>
+      <button id="driveShareBtn" disabled>Copy Share Link</button>
+    </div>
+    <div id="driveStatus">Not connected.</div>
   </div>
-
-  <hr style="margin:10px 0; opacity:0.3;" />
-
-  <div><strong>Local Image → truck screen</strong></div>
-  <div style="margin-top:4px; opacity:0.7;">Drop image anywhere or choose a file:</div>
-
-  <button id="localChooseBtn" style="margin-top:6px;">Choose Image</button>
-
-  <input id="fileInput" type="file" accept="image/*" style="display:none;" />
-
-  <div id="driveStatus" style="margin-top:10px;">Not connected.</div>
-  </div>
-
 
 <script>
   const canvas = document.getElementById("renderCanvas");
@@ -179,9 +172,6 @@
   // ---------- DROPZONE ----------
   const dropzone = document.getElementById("dropzone");
   const fileInput = document.getElementById("fileInput");
-  const localChooseBtn = document.getElementById("localChooseBtn");
-  localChooseBtn.addEventListener("click", () => fileInput.click());
-
 
   dropzone.addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", (e) => {

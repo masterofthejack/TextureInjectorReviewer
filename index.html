@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -17,7 +17,8 @@
   <script src="js/viewerCore.js"></script>
 
   <style>
-    html, body {
+    html,
+    body {
       margin: 0;
       padding: 0;
       width: 100%;
@@ -32,13 +33,43 @@
       display: block;
     }
 
+    #dropzone {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      z-index: 10;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 10px 14px;
+      border-radius: 6px;
+      color: #fff;
+      font-family: system-ui, sans-serif;
+      font-size: 13px;
+      border: 1px dashed rgba(255, 255, 255, 0.4);
+      cursor: pointer;
+      user-select: none;
+      opacity: 0;
+      transition: opacity .25s ease, background .25s ease, border-color .25s ease;
+      max-width: 420px;
+      box-sizing: border-box;
+    }
+
+    #dropzone.dragover {
+      opacity: 1;
+      background: rgba(0, 0, 0, 0.85);
+      border-color: #4caf50;
+    }
+
+    #fileInput {
+      display: none;
+    }
+
     #drivePanel {
       position: absolute;
       bottom: 10px;
       left: 10px;
       z-index: 20;
       background: rgba(0, 0, 0, 0.7);
-      padding: 12px 16px;
+      padding: 10px 14px;
       border-radius: 6px;
       color: #fff;
       font-family: system-ui, sans-serif;
@@ -78,46 +109,33 @@
     }
 
     #driveStatus {
-      margin-top: 8px;
+      margin-top: 4px;
       font-size: 11px;
       opacity: 0.8;
-    }
-
-    hr {
-      border: none;
-      border-top: 1px solid rgba(255, 255, 255, 0.2);
-      margin: 10px 0;
     }
   </style>
 </head>
 
 <body>
 
+  <div id="dropzone">
+    Drop image anywhere or click to choose<br />
+    <span style="opacity:0.7;">(used as emissive texture)</span>
+  </div>
+
+  <input id="fileInput" type="file" accept="image/*" />
   <canvas id="renderCanvas"></canvas>
 
-  <!-- Unified UI Panel -->
+  <!-- Google Drive UI -->
   <div id="drivePanel">
-
     <div><strong>Google Drive image → truck screen</strong></div>
     <div style="margin-top:4px;">Paste a Google Drive file link or file ID.</div>
-
     <input id="driveInput" placeholder="Drive link or file ID" />
-
-    <div style="margin-top:8px;">
+    <div>
       <button id="driveAuthBtn">Connect Google Drive</button>
       <button id="driveLoadBtn" disabled>Load to Screen</button>
       <button id="driveShareBtn" disabled>Copy Share Link</button>
     </div>
-
-    <hr />
-
-    <div><strong>Local Image → truck screen</strong></div>
-    <div style="margin-top:4px; opacity:0.7;">Drop image anywhere or choose a file:</div>
-
-    <button id="localChooseBtn" style="margin-top:6px;">Choose Image</button>
-
-    <input id="fileInput" type="file" accept="image/*" style="display:none;" />
-
     <div id="driveStatus">Not connected.</div>
   </div>
 
@@ -127,8 +145,6 @@
 
   let scene = null;
   let screenMat = null;
-
-  let lastLoadedDriveId = null;   // ⭐ Track the actual loaded file ID
 
   // ---------- EMISSIVE HANDLER ----------
   function setScreenEmissiveFromUrl(url) {
@@ -153,19 +169,17 @@
     setScreenEmissiveFromUrl(url);
   }
 
-  // ---------- LOCAL CHOOSE BUTTON ----------
+  // ---------- DROPZONE ----------
+  const dropzone = document.getElementById("dropzone");
   const fileInput = document.getElementById("fileInput");
-  const localChooseBtn = document.getElementById("localChooseBtn");
 
-  localChooseBtn.addEventListener("click", () => fileInput.click());
-
+  dropzone.addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", (e) => {
     const file = e.target.files[0];
     handleFile(file);
     fileInput.value = "";
   });
 
-  // ---------- GLOBAL DRAG & DROP ----------
   ["dragenter", "dragover", "dragleave", "drop"].forEach((evt) => {
     window.addEventListener(evt, (e) => {
       e.preventDefault();
@@ -173,7 +187,10 @@
     });
   });
 
+  window.addEventListener("dragover", () => dropzone.classList.add("dragover"));
+  window.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
   window.addEventListener("drop", (e) => {
+    dropzone.classList.remove("dragover");
     const file = e.dataTransfer.files[0];
     handleFile(file);
   });
@@ -191,12 +208,12 @@
   const driveShareBtn = document.getElementById("driveShareBtn");
 
   driveShareBtn.addEventListener("click", () => {
-    const fileId = lastLoadedDriveId;
+    const fileId = extractFileId(driveInput.value);
     if (!fileId) {
-      driveStatus.textContent = "Cannot generate link — no Drive image loaded.";
+      driveStatus.textContent = "Cannot generate link — invalid Drive ID.";
       return;
     }
-    const shareUrl = `${window.location.origin}/viewer.html?drive=${fileId}`;
+    const shareUrl = `${window.location.origin}${window.location.pathname}?drive=${fileId}`;
     navigator.clipboard.writeText(shareUrl).then(() => {
       driveStatus.textContent = "Share link copied to clipboard.";
     });
@@ -204,19 +221,21 @@
 
   function initGoogleTokenClient() {
     if (tokenClient) return;
-    tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID,
-      scope: "https://www.googleapis.com/auth/drive.readonly",
-      callback: (tokenResponse) => {
-        accessToken = tokenResponse.access_token;
-        driveStatus.textContent = "Connected to Google Drive.";
-        driveLoadBtn.disabled = false;
+tokenClient = google.accounts.oauth2.initTokenClient({
+  client_id: CLIENT_ID,
+  scope: "https://www.googleapis.com/auth/drive.readonly",
+  callback: (tokenResponse) => {
+    accessToken = tokenResponse.access_token;
+    driveStatus.textContent = "Connected to Google Drive.";
+    driveLoadBtn.disabled = false;
 
-        if (pendingDriveIdFromUrl) {
-          loadDriveImageToScreen(pendingDriveIdFromUrl);
-        }
-      },
-    });
+    // ⭐ AUTO-LOAD IMAGE IF URL CONTAINS ?drive=ID ⭐
+    if (pendingDriveIdFromUrl) {
+      loadDriveImageToScreen(pendingDriveIdFromUrl);
+    }
+  },
+});
+
   }
 
   function requestDriveAccess() {
@@ -284,9 +303,6 @@
       driveStatus.textContent = "Could not parse Drive file ID from input.";
       return;
     }
-
-    lastLoadedDriveId = fileId;   // ⭐ Save correct ID
-
     driveStatus.textContent = "Loading image from Drive...";
     try {
       const blob = await fetchDriveImageBlob(fileId);
@@ -319,6 +335,7 @@
     screenMat = sm;
 
     engine.runRenderLoop(() => scene.render());
+    dropzone.style.opacity = 1;
 
     if (pendingDriveIdFromUrl) {
       driveInput.value = pendingDriveIdFromUrl;
@@ -326,6 +343,9 @@
     }
   });
 
+  
 </script>
 </body>
-</html>
+
+</html> -->
+

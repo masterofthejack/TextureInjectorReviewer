@@ -169,7 +169,7 @@ window.createTruckViewer = async function (engine, canvas) {
 
     // ---------------- PERFORMANCE + FPS HUD ----------------
     const HIGH_QUALITY_SCALE = window.devicePixelRatio * 0.5;
-    const LOW_QUALITY_SCALE = window.devicePixelRatio * 2;
+    const LOW_QUALITY_SCALE = window.devicePixelRatio * 1;
 
     engine.setHardwareScalingLevel(HIGH_QUALITY_SCALE);
 

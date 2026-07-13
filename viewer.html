@@ -13,12 +13,11 @@
   <!-- Google OAuth -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-  <!-- Shared Babylon core (scene, camera, model, materials, FPS, etc.) -->
+  <!-- Shared Babylon core -->
   <script src="js/viewerCore.js"></script>
 
   <style>
-    html,
-    body {
+    html, body {
       margin: 0;
       padding: 0;
       width: 100%;
@@ -109,15 +108,36 @@
 
     let scene = null;
     let screenMat = null;
-
-    // --- Drive ID from URL ---
-    const params = new URLSearchParams(window.location.search);
-    const driveId = params.get("drive");
-
-    // --- Google OAuth ---
-    const CLIENT_ID = "371240549849-dt480l9a06os8h421tmiv7ja60a280i1.apps.googleusercontent.com";
     let accessToken = null;
     let tokenClient = null;
+
+    const params = new URLSearchParams(window.location.search);
+    const driveInputValue = params.get("drive");
+
+    const CLIENT_ID = "371240549849-dt480l9a06os8h421tmiv7ja60a280i1.apps.googleusercontent.com";
+
+    function getRedirectUri() {
+      const redirectUri = new URL(window.location.href);
+      redirectUri.hash = "";
+      return redirectUri.toString();
+    }
+
+    function extractFileId(input) {
+      if (!input) return null;
+      const trimmed = input.trim();
+      if (!trimmed) return null;
+
+      if (/YOUR_FILE_ID_OR_SHARE_LINK/i.test(trimmed)) return null;
+      if (/^[A-Za-z0-9_-]+$/.test(trimmed)) return trimmed;
+
+      const directIdMatch = trimmed.match(/[?&](?:id|drive)=([^&]+)/i);
+      if (directIdMatch && directIdMatch[1]) return decodeURIComponent(directIdMatch[1]);
+
+      const shareMatch = trimmed.match(/(?:\/d\/|\/file\/d\/)([^/?]+)/i);
+      if (shareMatch && shareMatch[1]) return shareMatch[1];
+
+      return trimmed;
+    }
 
     function initGoogleTokenClient() {
       if (tokenClient) return;
@@ -128,52 +148,92 @@
         callback: (tokenResponse) => {
           accessToken = tokenResponse.access_token;
           statusBox.textContent = "Connected to Google Drive…";
-          authBtn.style.display = "none";
-          overlay.classList.add("hidden");
 
-          if (driveId) loadDriveImage(driveId);
+          overlay.classList.add("hidden");
+          authBtn.style.display = "none";
+
+          if (driveInputValue) {
+            loadDriveImage(driveInputValue);
+          }
         }
       });
     }
 
-    function showAuthButton() {
-      authBtn.style.display = "block";
-      statusBox.textContent = "Click 'Load Image' to fetch the screen texture.";
+    function redirectToGoogleAuth() {
+      const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+      authUrl.searchParams.set("client_id", CLIENT_ID);
+      authUrl.searchParams.set("redirect_uri", getRedirectUri());
+      authUrl.searchParams.set("response_type", "token");
+      authUrl.searchParams.set("scope", "https://www.googleapis.com/auth/drive.readonly");
+      authUrl.searchParams.set("include_granted_scopes", "true");
+      authUrl.searchParams.set("state", encodeURIComponent(window.location.href));
+      authUrl.searchParams.set("prompt", "select_account");
+      window.location.href = authUrl.toString();
+    }
+
+    function startViewerFlow() {
+      if (driveInputValue) {
+        statusBox.textContent = "Drive link detected. Connecting to Google Drive…";
+        if (!window.google || !google.accounts || !google.accounts.oauth2) {
+          statusBox.textContent = "Google Identity Services not ready. Try reloading.";
+          return;
+        }
+
+        if (window.location.hash && window.location.hash.includes("access_token")) {
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          accessToken = hashParams.get("access_token");
+          statusBox.textContent = "Connected to Google Drive…";
+          overlay.classList.add("hidden");
+          authBtn.style.display = "none";
+          if (driveInputValue) {
+            loadDriveImage(driveInputValue);
+          }
+          return;
+        }
+
+        if (window.google && google.accounts && google.accounts.oauth2) {
+          initGoogleTokenClient();
+          tokenClient.requestAccessToken({ prompt: "select_account" });
+        } else {
+          redirectToGoogleAuth();
+        }
+        return;
+      }
+
+      statusBox.textContent = "No Drive file supplied. Add ?drive=FILE_ID_OR_SHARE_LINK to the URL.";
     }
 
     authBtn.addEventListener("click", () => {
-      if (!window.google || !google.accounts || !google.accounts.oauth2) {
-        statusBox.textContent = "Google Identity Services not ready. Try reloading.";
-        return;
-      }
-      initGoogleTokenClient();
-      tokenClient.requestAccessToken();
+      startViewerFlow();
     });
 
     async function fetchDriveBlob(fileId) {
-      const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`;
+      const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true&cacheBust=${Date.now()}`;
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${accessToken}` }
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Cache-Control": "no-cache"
+        },
+        cache: "no-store"
       });
 
-      if (res.status === 401 || res.status === 403) {
-        statusBox.textContent = "Drive access denied. Click 'Load Image' again.";
-        authBtn.style.display = "block";
-        overlay.classList.remove("hidden");
-        return null;
-      }
-
       if (!res.ok) {
-        statusBox.textContent = "Failed to load image.";
+        statusBox.textContent = `Drive request failed (${res.status}). Make sure the file is shared with the signed-in Google account.`;
         return null;
       }
 
       return await res.blob();
     }
 
-    async function loadDriveImage(fileId) {
-      if (!screenMat) {
+    async function loadDriveImage(input) {
+      if (!screenMat || !scene) {
         statusBox.textContent = "Scene not ready yet.";
+        return;
+      }
+
+      const fileId = extractFileId(input);
+      if (!fileId) {
+        statusBox.textContent = "Could not parse the Drive link.";
         return;
       }
 
@@ -182,13 +242,14 @@
       const blob = await fetchDriveBlob(fileId);
       if (!blob) return;
 
-      const url = URL.createObjectURL(blob);
+      const objectUrl = URL.createObjectURL(blob);
 
       if (screenMat.emissiveTexture) {
         screenMat.emissiveTexture.dispose();
+        screenMat.emissiveTexture = null;
       }
 
-      const tex = new BABYLON.Texture(url, scene);
+      const tex = new BABYLON.Texture(objectUrl, scene);
       tex.invertY = false;
       tex.hasAlpha = true;
 
@@ -199,13 +260,12 @@
       setTimeout(() => statusBox.style.opacity = 0, 800);
     }
 
-    // --- Bootstrap Babylon via shared core ---
-    createTruckViewer(engine, canvas).then(({ scene: s, camera, screenMat: sm }) => {
+    createTruckViewer(engine, canvas).then(({ scene: s, screenMat: sm }) => {
       scene = s;
       screenMat = sm;
 
       engine.runRenderLoop(() => scene.render());
-      showAuthButton();
+      startViewerFlow();
     });
   </script>
 </body>

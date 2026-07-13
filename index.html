@@ -119,8 +119,8 @@
 <body>
 
   <div id="dropzone">
-    Drop image anywhere or click to choose<br />
-    <span style="opacity:0.7;">(used as emissive texture)</span>
+    Drop image anywhere or click to choose*<br />
+    <span style="opacity:0.7;">*This will be viewable here but can't be shared</span>
   </div>
 
   <input id="fileInput" type="file" accept="image/*" />
@@ -228,16 +228,10 @@
     return successful;
   }
 
+  const VIEWER_BASE_URL = "https://www.hypedmedia.com.au/tcvc/viewer.html";
+
   function buildViewerUrl(fileId) {
-    let path = window.location.pathname;
-    if (path.endsWith(".html")) {
-      path = path.replace(/[^/]+$/, "viewer.html");
-    } else if (path.endsWith("/")) {
-      path = path + "viewer.html";
-    } else {
-      path = path + "/viewer.html";
-    }
-    return `${window.location.origin}${path}?drive=${encodeURIComponent(fileId)}`;
+    return `${VIEWER_BASE_URL}?drive=${encodeURIComponent(fileId)}`;
   }
 
   async function copyToClipboard(text) {

@@ -213,7 +213,7 @@
       driveStatus.textContent = "Cannot generate link — invalid Drive ID.";
       return;
     }
-    const shareUrl = `${window.location.origin}/viewer.html?drive=${fileId}`;
+    const shareUrl = `${window.location.origin}${window.location.pathname}?drive=${fileId}`;
     navigator.clipboard.writeText(shareUrl).then(() => {
       driveStatus.textContent = "Share link copied to clipboard.";
     });
@@ -348,3 +348,4 @@ tokenClient = google.accounts.oauth2.initTokenClient({
 </body>
 
 </html> -->
+

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Truck Viewer</title>
+
+  <!-- Babylon -->
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+  <script src="https://cdn.babylonjs.com/materialsLibrary/babylon.shadowOnlyMaterial.min.js"></script>
+
+  <!-- Google OAuth -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <!-- Shared Babylon core (scene, camera, model, materials, FPS, etc.) -->
+  <script src="js/viewerCore.js"></script>
+
+  <style>
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #111;
+    }
+
+    canvas {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+    }
+
+    #status {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      padding: 6px 10px;
+      background: rgba(0, 0, 0, 0.65);
+      color: #fff;
+      font-family: system-ui, sans-serif;
+      font-size: 12px;
+      border-radius: 4px;
+      z-index: 20;
+      opacity: 1;
+      transition: opacity .4s ease;
+      white-space: pre-line;
+    }
+
+    #overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      opacity: 1;
+      transition: opacity 0.3s ease;
+    }
+
+    #overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #authBtn {
+      padding: 20px 28px;
+      font-size: 24px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.92);
+      color: #111;
+      font-family: system-ui, sans-serif;
+      font-weight: 600;
+      text-align: center;
+      backdrop-filter: blur(8px);
+      transition: transform 0.2s ease, background 0.2s ease;
+    }
+
+    #authBtn:hover {
+      background: white;
+      transform: scale(1.03);
+    }
+  </style>
+</head>
+
+<body>
+  <div id="overlay">
+    <button id="authBtn">Load Image</button>
+  </div>
+
+  <div id="status">Loading viewer…</div>
+  <canvas id="renderCanvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById("renderCanvas");
+    const engine = new BABYLON.Engine(canvas, true);
+
+    const statusBox = document.getElementById("status");
+    const overlay = document.getElementById("overlay");
+    const authBtn = document.getElementById("authBtn");
+
+    let scene = null;
+    let screenMat = null;
+
+    // --- Drive ID from URL ---
+    const params = new URLSearchParams(window.location.search);
+    const driveId = params.get("drive");
+
+    // --- Google OAuth ---
+    const CLIENT_ID = "371240549849-dt480l9a06os8h421tmiv7ja60a280i1.apps.googleusercontent.com";
+    let accessToken = null;
+    let tokenClient = null;
+
+    function initGoogleTokenClient() {
+      if (tokenClient) return;
+
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: "https://www.googleapis.com/auth/drive.readonly",
+        callback: (tokenResponse) => {
+          accessToken = tokenResponse.access_token;
+          statusBox.textContent = "Connected to Google Drive…";
+          authBtn.style.display = "none";
+          overlay.classList.add("hidden");
+
+          if (driveId) loadDriveImage(driveId);
+        }
+      });
+    }
+
+    function showAuthButton() {
+      authBtn.style.display = "block";
+      statusBox.textContent = "Click 'Load Image' to fetch the screen texture.";
+    }
+
+    authBtn.addEventListener("click", () => {
+      if (!window.google || !google.accounts || !google.accounts.oauth2) {
+        statusBox.textContent = "Google Identity Services not ready. Try reloading.";
+        return;
+      }
+      initGoogleTokenClient();
+      tokenClient.requestAccessToken();
+    });
+
+    async function fetchDriveBlob(fileId) {
+      const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+
+      if (res.status === 401 || res.status === 403) {
+        statusBox.textContent = "Drive access denied. Click 'Load Image' again.";
+        authBtn.style.display = "block";
+        overlay.classList.remove("hidden");
+        return null;
+      }
+
+      if (!res.ok) {
+        statusBox.textContent = "Failed to load image.";
+        return null;
+      }
+
+      return await res.blob();
+    }
+
+    async function loadDriveImage(fileId) {
+      if (!screenMat) {
+        statusBox.textContent = "Scene not ready yet.";
+        return;
+      }
+
+      statusBox.textContent = "Loading image…";
+
+      const blob = await fetchDriveBlob(fileId);
+      if (!blob) return;
+
+      const url = URL.createObjectURL(blob);
+
+      if (screenMat.emissiveTexture) {
+        screenMat.emissiveTexture.dispose();
+      }
+
+      const tex = new BABYLON.Texture(url, scene);
+      tex.invertY = false;
+      tex.hasAlpha = true;
+
+      screenMat.emissiveTexture = tex;
+      screenMat.emissiveColor = new BABYLON.Color3(1, 1, 1);
+
+      statusBox.textContent = "Loaded.";
+      setTimeout(() => statusBox.style.opacity = 0, 800);
+    }
+
+    // --- Bootstrap Babylon via shared core ---
+    createTruckViewer(engine, canvas).then(({ scene: s, camera, screenMat: sm }) => {
+      scene = s;
+      screenMat = sm;
+
+      engine.runRenderLoop(() => scene.render());
+      showAuthButton();
+    });
+  </script>
+</body>
+
+</html>

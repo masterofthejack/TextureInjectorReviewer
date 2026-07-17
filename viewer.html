@@ -112,8 +112,26 @@
     let sceneReady = false;
     let authReady = false;
 
+    // ⭐ Extract file ID from ANY Drive link or raw ID
+    function extractFileId(input) {
+      if (!input) return null;
+
+      // Raw ID (20+ chars)
+      if (/^[A-Za-z0-9_-]{20,}$/.test(input)) return input;
+
+      // /d/<ID>/ format
+      const match = input.match(/\/d\/([^\/]+)/);
+      if (match) return match[1];
+
+      // id=<ID> format
+      const params = new URLSearchParams(input);
+      if (params.get("id")) return params.get("id");
+
+      return null;
+    }
+
     const params = new URLSearchParams(window.location.search);
-    const driveId = params.get("drive");
+    const driveId = extractFileId(params.get("drive"));
 
     const CLIENT_ID = "371240549849-dt480l9a06os8h421tmiv7ja60a280i1.apps.googleusercontent.com";
     let accessToken = null;
@@ -155,7 +173,7 @@
       });
 
       if (!res.ok) {
-        statusBox.textContent = "Failed to load image.";
+        statusBox.textContent = "Failed to load image (404 or permissions).";
         return null;
       }
 

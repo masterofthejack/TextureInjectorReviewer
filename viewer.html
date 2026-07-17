@@ -109,6 +109,8 @@
 
     let scene = null;
     let screenMat = null;
+    let sceneReady = false;
+    let authReady = false;
 
     const params = new URLSearchParams(window.location.search);
     const driveId = params.get("drive");
@@ -116,6 +118,12 @@
     const CLIENT_ID = "371240549849-dt480l9a06os8h421tmiv7ja60a280i1.apps.googleusercontent.com";
     let accessToken = null;
     let tokenClient = null;
+
+    function tryLoadImage() {
+      if (sceneReady && authReady && driveId) {
+        loadDriveImage(driveId);
+      }
+    }
 
     function initGoogleTokenClient() {
       if (tokenClient) return;
@@ -125,22 +133,17 @@
         scope: "https://www.googleapis.com/auth/drive.readonly",
         callback: (tokenResponse) => {
           accessToken = tokenResponse.access_token;
-          statusBox.textContent = "Connected to Google Drive…";
+          authReady = true;
 
           overlay.classList.add("hidden");
           authBtn.style.display = "none";
 
-          // DO NOT load the image here — viewerCore.js may still overwrite the material
+          tryLoadImage();
         }
       });
     }
 
     authBtn.addEventListener("click", () => {
-      if (!window.google || !google.accounts || !google.accounts.oauth2) {
-        statusBox.textContent = "Google Identity Services not ready. Try reloading.";
-        return;
-      }
-
       initGoogleTokenClient();
       tokenClient.requestAccessToken();
     });
@@ -182,19 +185,16 @@
       setTimeout(() => statusBox.style.opacity = 0, 800);
     }
 
-    // ⭐ Correct place to load the Drive image — AFTER viewerCore.js finishes
     createTruckViewer(engine, canvas).then(({ scene: s, camera, screenMat: sm }) => {
       scene = s;
       screenMat = sm;
 
       engine.runRenderLoop(() => scene.render());
 
+      sceneReady = true;
       statusBox.textContent = "Click 'Load Image' to begin.";
 
-      // NOW the material is stable — safe to load the Drive image
-      if (driveId && accessToken) {
-        loadDriveImage(driveId);
-      }
+      tryLoadImage();
     });
   </script>
 

@@ -99,122 +99,119 @@
   <div id="status">Loading viewer…</div>
   <canvas id="renderCanvas"></canvas>
 
-  <script>
-    const canvas = document.getElementById("renderCanvas");
-    const engine = new BABYLON.Engine(canvas, true);
+<script>
+  const canvas = document.getElementById("renderCanvas");
+  const engine = new BABYLON.Engine(canvas, true);
+  const statusBox = document.getElementById("status");
+  const overlay = document.getElementById("overlay");
+  const authBtn = document.getElementById("authBtn");
 
-    const statusBox = document.getElementById("status");
-    const overlay = document.getElementById("overlay");
-    const authBtn = document.getElementById("authBtn");
+  let scene = null;
+  let screenMat = null;
+  let sceneReady = false;
+  let authReady = false;
 
-    let scene = null;
-    let screenMat = null;
-    let sceneReady = false;
-    let authReady = false;
+  function extractFileId(input) {
+    if (!input) return null;
+    if (/^[A-Za-z0-9_-]{20,}$/.test(input)) return input;
+    const match = input.match(/\/d\/([^\/]+)/);
+    if (match) return match[1];
+    const params = new URLSearchParams(input);
+    if (params.get("id")) return params.get("id");
+    return null;
+  }
 
-    // ⭐ Extract file ID from ANY Drive link or raw ID
-    function extractFileId(input) {
-      if (!input) return null;
+  const params = new URLSearchParams(window.location.search);
+  const driveId = extractFileId(params.get("drive"));
+  const CLIENT_ID = "371240549849-dt480l9a06os8h421tmiv7ja60a280i1.apps.googleusercontent.com";
+  let accessToken = null;
+  let tokenClient = null;
 
-      // Raw ID (20+ chars)
-      if (/^[A-Za-z0-9_-]{20,}$/.test(input)) return input;
-
-      // /d/<ID>/ format
-      const match = input.match(/\/d\/([^\/]+)/);
-      if (match) return match[1];
-
-      // id=<ID> format
-      const params = new URLSearchParams(input);
-      if (params.get("id")) return params.get("id");
-
-      return null;
+  function tryLoadImage() {
+    // Only attempt the fetch if BOTH the Babylon scene and Google Auth are fully ready
+    if (sceneReady && authReady && driveId) {
+      loadDriveImage(driveId);
     }
+  }
 
-    const params = new URLSearchParams(window.location.search);
-    const driveId = extractFileId(params.get("drive"));
-
-    const CLIENT_ID = "371240549849-dt480l9a06os8h421tmiv7ja60a280i1.apps.googleusercontent.com";
-    let accessToken = null;
-    let tokenClient = null;
-
-    function tryLoadImage() {
-      if (sceneReady && authReady && driveId) {
-        loadDriveImage(driveId);
-      }
-    }
-
-    function initGoogleTokenClient() {
-      if (tokenClient) return;
-
+  // 1. Initialize the client immediately when Google SDK loads, NOT inside the click listener
+  window.onload = function () {
+    if (typeof google !== 'undefined') {
       tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: "https://www.googleapis.com/auth/drive.readonly",
         callback: (tokenResponse) => {
+          if (tokenResponse.error) {
+            statusBox.textContent = "Auth failed: " + tokenResponse.error;
+            return;
+          }
           accessToken = tokenResponse.access_token;
           authReady = true;
-
           overlay.classList.add("hidden");
           authBtn.style.display = "none";
-
-          tryLoadImage();
+          tryLoadImage(); // Safely trigger image build now that token exists
         }
       });
+    } else {
+      statusBox.textContent = "Google SDK failed to load.";
     }
+  };
 
-    authBtn.addEventListener("click", () => {
-      initGoogleTokenClient();
+  // 2. Simple click handler that only requests the token popup
+  authBtn.addEventListener("click", () => {
+    if (tokenClient) {
+      // NOTE: For this popup to work inside an iframe, the parent <iframe> tag 
+      // MUST include allow="identity-credentials-get"
       tokenClient.requestAccessToken();
-    });
+    }
+  });
 
-    async function fetchDriveBlob(fileId) {
-      const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`;
+  async function fetchDriveBlob(fileId) {
+    const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`;
+    try {
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${accessToken}` }
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
       });
-
       if (!res.ok) {
-        statusBox.textContent = "Failed to load image (404 or permissions).";
+        statusBox.textContent = `Error (${res.status}): Failed to load image.`;
         return null;
       }
-
       return await res.blob();
+    } catch (err) {
+      statusBox.textContent = "Network error fetching image.";
+      return null;
     }
+  }
 
-    async function loadDriveImage(fileId) {
-      statusBox.textContent = "Loading image…";
-
-      const blob = await fetchDriveBlob(fileId);
-      if (!blob) return;
-
-      const url = URL.createObjectURL(blob);
-
-      if (screenMat.emissiveTexture) {
-        screenMat.emissiveTexture.dispose();
-      }
-
-      const tex = new BABYLON.Texture(url, scene);
-      tex.invertY = false;
-      tex.hasAlpha = true;
-
-      screenMat.emissiveTexture = tex;
-      screenMat.emissiveColor = new BABYLON.Color3(1, 1, 1);
-
-      statusBox.textContent = "Loaded.";
-      setTimeout(() => statusBox.style.opacity = 0, 800);
+  async function loadDriveImage(fileId) {
+    statusBox.textContent = "Loading image…";
+    const blob = await fetchDriveBlob(fileId);
+    if (!blob) return;
+    
+    const url = URL.createObjectURL(blob);
+    if (screenMat.emissiveTexture) {
+      screenMat.emissiveTexture.dispose();
     }
+    const tex = new BABYLON.Texture(url, scene);
+    tex.invertY = false;
+    tex.hasAlpha = true;
+    screenMat.emissiveTexture = tex;
+    screenMat.emissiveColor = new BABYLON.Color3(1, 1, 1);
+    statusBox.textContent = "Loaded.";
+    setTimeout(() => statusBox.style.opacity = 0, 800);
+  }
 
-    createTruckViewer(engine, canvas).then(({ scene: s, camera, screenMat: sm }) => {
-      scene = s;
-      screenMat = sm;
-
-      engine.runRenderLoop(() => scene.render());
-
-      sceneReady = true;
-      statusBox.textContent = "Click 'Load Image' to begin.";
-
-      tryLoadImage();
-    });
-  </script>
+  createTruckViewer(engine, canvas).then(({ scene: s, camera, screenMat: sm }) => {
+    scene = s;
+    screenMat = sm;
+    engine.runRenderLoop(() => scene.render());
+    sceneReady = true;
+    statusBox.textContent = "Click 'Load Image' to begin.";
+    tryLoadImage();
+  });
+</script>
 
 </body>
 </html>
